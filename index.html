@@ -61,7 +61,7 @@
   .tally svg{height:16px;width:auto;}
   .tally line{stroke:var(--red);stroke-width:2;}
 
-  .chat{border:1px solid var(--line);background:var(--ink-2);min-height:340px;max-height:440px;overflow-y:auto;padding:16px;margin-bottom:12px;border-radius:4px;box-shadow:inset 0 1px 8px rgba(0,0,0,0.2);-webkit-overflow-scrolling:touch;touch-action:pan-y;}
+  .chat{border:1px solid var(--line);background:var(--ink-2);min-height:340px;max-height:440px;overflow-y:auto;padding:16px;margin-bottom:12px;border-radius:4px;box-shadow:inset 0 1px 8px rgba(0,0,0,0.2);scroll-behavior:smooth;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   .chat-block{border:1px solid var(--line);background:var(--ink-2);border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.25);margin-bottom:12px;overflow:hidden;transition:box-shadow 0.25s;}
   .chat-block:focus-within{box-shadow:0 4px 20px rgba(0,0,0,0.32);}
   .chat-block .chat{border:none;border-radius:0;box-shadow:none;margin-bottom:0;}
@@ -455,7 +455,7 @@
   .theme-browser-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px;}
 
   /* ---- mobile adaptation ---- */
-  body.mobile-view{padding:14px 12px calc(24px + env(safe-area-inset-bottom));}
+  body.mobile-view{padding:14px 12px calc(78px + env(safe-area-inset-bottom));}
   body.mobile-view .frame{max-width:100%;}
   body.mobile-view .header{padding-bottom:10px;margin-bottom:12px;}
   body.mobile-view h1{font-size:27px;margin:0 0 4px;}
@@ -465,17 +465,20 @@
   body.mobile-view .stat{min-width:0;flex:1 1 0;padding:7px 8px;}
   body.mobile-view .stat-label{font-size:8.5px;}
   body.mobile-view .stat-val{font-size:15px;}
-  /* chat-block flexes to provide ample space without overflowing the screen. Composer stays in-flow
-     at the bottom of chat-block rather than fixed, preventing it from overlaying/obscuring chat messages. */
-  body.mobile-view .chat-block{display:flex;flex-direction:column;margin-bottom:10px;height:clamp(280px, calc(100dvh - 220px - env(safe-area-inset-bottom)), 540px);max-height:none;overflow:hidden;}
-  body.mobile-view .chat-block .chat{flex:1 1 auto;min-height:0;max-height:none;padding:12px;margin-bottom:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;}
+  /* chat-block fills remaining viewport height so the gray box always reaches the composer, no gap.
+     IMPORTANT: this must be a HARD cap (height, not just min-height) or the flex:1 child below has
+     no bounded space to fill — the box then grows with message content instead of scrolling
+     internally, and the whole PAGE scrolls instead of the chat. See bug log #26. */
+  body.mobile-view .chat-block{display:flex;flex-direction:column;margin-bottom:10px;height:max(180px, calc(100dvh - 360px));max-height:max(180px, calc(100dvh - 360px));overflow:hidden;}
+  body.mobile-view .chat-block .chat{flex:1;min-height:0;max-height:none;padding:12px;margin-bottom:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   body.mobile-view .msg{font-size:12.5px;margin-bottom:11px;}
   body.mobile-view textarea{font-size:16px;height:36px;line-height:20px;padding:8px 10px;} /* 16px prevents iOS auto-zoom on focus */
   body.mobile-view textarea::placeholder{font-size:13px;} /* placeholder can be smaller without triggering iOS zoom */
   body.mobile-view .composer{
-    position:relative;left:auto;right:auto;bottom:auto;z-index:auto;
-    background:var(--ink-2);border-top:1px solid var(--line);
-    padding:10px 12px;margin:0;gap:8px;align-items:center;display:flex;
+    position:fixed;left:0;right:0;bottom:0;z-index:40;
+    background:var(--ink);border-top:1px solid var(--line);
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    margin:0;gap:8px;align-items:center;
   }
   body.mobile-view .composer button{height:38px;font-size:11px;padding:0 14px;}
   body.mobile-view .task-adjust button{font-size:11px;padding:0 14px;height:38px;}
@@ -804,6 +807,14 @@
   <div class="settings-overlay" id="settingsOverlay">
     <div class="settings-panel">
       <div class="eyebrow">Settings</div>
+      <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:0;">
+        <span style="flex:0 0 auto;">OpenRouter API key <small>Required — stays only in this browser, never sent anywhere but OpenRouter. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style="color:var(--amber);">openrouter.ai/keys</a>.</small></span>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <input type="password" id="apiKeyInput" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false" style="flex:1;min-width:0;background:var(--ink);border:1px solid var(--line);color:var(--bone);border-radius:4px;padding:8px 10px;font-family:inherit;font-size:12px;">
+          <button id="apiKeyToggleBtn" type="button" title="Show/hide key" style="flex:0 0 auto;">Show</button>
+        </div>
+        <small id="apiKeyStatus" style="display:block;margin-top:6px;"></small>
+      </div>
       <div class="settings-row">
         <button id="themeBrowserOpenBtn" class="settings-nav" type="button">
           <span class="settings-nav-label">
@@ -947,6 +958,9 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 /* ====================== CONFIG ====================== */
+// No API key lives in this file. Each person who runs this app pastes their own OpenRouter key
+// into Settings, which is stored only in their own browser's localStorage (gate_settings.apiKey)
+// and never touches any server this app controls. See getApiKey() near the settings block below.
 const MODEL_TEXT = "deepseek/deepseek-v4-flash"; // gate, checker, coach, satisfaction, summarizer, fact generator, goal adjuster — verify this exact slug on openrouter.ai/models if you get a 404
 const MODEL_IMAGE = "openai/gpt-4o-mini"; // single-photo and before/after photo verification — needs vision
 const MODEL_VIDEO = "google/gemini-2.5-flash-lite"; // video-task verification — verify this exact slug on openrouter.ai/models if you get a 404
@@ -1031,7 +1045,7 @@ async function callStrategyCoach(transcript, technique) {
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
       body: JSON.stringify({ model: MODEL_TEXT, messages: [{ role: "system", content: sys }, { role: "user", content: transcript || "(no messages yet)" }], max_tokens: 300, temperature: 0.4, reasoning: { enabled: false } })
     });
     logDebug('Strategy Coach', { technique, transcript });
@@ -1057,7 +1071,7 @@ async function callSatisfactionCheck(transcript, tierLabel) {
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
       body: JSON.stringify({ model: MODEL_TEXT, messages: [{ role: "system", content: sys }, { role: "user", content: transcript || "(no messages yet)" }], max_tokens: 300, temperature: 0.4, reasoning: { enabled: false } })
     });
     logDebug('Satisfaction Check', { tierLabel, transcript });
@@ -1082,14 +1096,7 @@ function parseTaskBlock(raw) {
   return { description: raw.trim(), mode: 'single' }; // default if the model forgot the tag
 }
 
-function getLocalDateKey(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-const todayKey = () => "gate_log_" + getLocalDateKey();
+const todayKey = () => "gate_log_" + new Date().toISOString().slice(0,10);
 
 function loadDay() {
   const raw = localStorage.getItem(todayKey());
@@ -1135,7 +1142,8 @@ function loadSettings() {
       themePreferences: s.themePreferences && typeof s.themePreferences === 'object' ? s.themePreferences : {},
       debugMode: !!s.debugMode,
       accent: VALID_ACCENTS.includes(s.accent) ? s.accent : 'amber',
-      reduceMotion: !!s.reduceMotion
+      reduceMotion: !!s.reduceMotion,
+      apiKey: typeof s.apiKey === 'string' ? s.apiKey : ''
     };
   } catch (e) {
     return {
@@ -1151,12 +1159,16 @@ function loadSettings() {
       themePreferences: {},
       debugMode: false,
       accent: 'amber',
-      reduceMotion: false
+      reduceMotion: false,
+      apiKey: ''
     };
   }
 }
 function saveSettings() { localStorage.setItem('gate_settings', JSON.stringify(settings)); }
 let settings = loadSettings();
+// Always read this live (never cache it in a const) — the key can change the moment someone
+// types a new one into Settings, and every call site below should pick that up immediately.
+function getApiKey() { return (settings.apiKey || '').trim(); }
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function parseThemeColorList(colors) {
@@ -1734,7 +1746,7 @@ const ThemeManager = {
   getSunTimesFor(now = new Date()) {
     const pref = settings.themePreferences || {};
     const cache = pref.sunTimes;
-    if (cache && cache.date === getLocalDateKey(now) && cache.sunrise && cache.sunset) {
+    if (cache && cache.date === now.toISOString().slice(0, 10) && cache.sunrise && cache.sunset) {
       return { sunrise: new Date(cache.sunrise), sunset: new Date(cache.sunset) };
     }
     return null;
@@ -1760,7 +1772,7 @@ const ThemeManager = {
     const pref = settings.themePreferences || {};
     const loc = pref.location;
     if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return null;
-    const today = getLocalDateKey();
+    const today = new Date().toISOString().slice(0, 10);
     const cacheKey = `${today}@${loc.lat.toFixed(3)},${loc.lng.toFixed(3)}`;
     if (pref.sunTimes && pref.sunTimes.cacheKey === cacheKey) return pref.sunTimes;
     try {
@@ -2259,44 +2271,23 @@ function logDebug(label, payload) {
   panel.scrollTop = panel.scrollHeight;
 }
 
-let currentDayDateKey = getLocalDateKey();
 let day = loadDay();
 if (!day.taskState) day.taskState = null;
 const chatEl = document.getElementById('chat');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('send');
 
-// Checks if the calendar date has rolled over and immediately resets/reloads today's state
-function checkDayRollover() {
-  const newDateKey = getLocalDateKey();
-  if (newDateKey !== currentDayDateKey) {
-    logDebug('Day rollover detected', `Switching from ${currentDayDateKey} to ${newDateKey}`);
-    currentDayDateKey = newDateKey;
-    day = loadDay();
-    if (!day.taskState) day.taskState = null;
-    renderHistory();
-    if (typeof ThemeManager !== 'undefined' && ThemeManager.refresh) {
-      ThemeManager.refresh('day-rollover');
-    }
-    return true;
-  }
-  return false;
-}
-
-// Scrolls the chat box to the newest message instantly without smooth-glide interruption.
-// Multiple staggered ticks (immediate, double-rAF, and timeouts) ensure full scroll even as
-// webfonts/text reflow settles on mobile.
+// Scrolls the chat box to the newest message. Double-rAF (not a single one) because on some
+// mobile browsers the freshly appended node hasn't been given its final layout height by the
+// time a single animation frame fires (webfont/text reflow, safe-area insets settling, etc.),
+// which under-scrolls by roughly one message. Two frames costs one extra ~16ms tick and reliably
+// lands after layout is settled.
 function scrollChatToBottom() {
-  const doScroll = () => {
-    if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
-  };
-  doScroll();
   requestAnimationFrame(() => {
-    doScroll();
-    requestAnimationFrame(doScroll);
+    requestAnimationFrame(() => {
+      chatEl.scrollTop = chatEl.scrollHeight;
+    });
   });
-  setTimeout(doScroll, 50);
-  setTimeout(doScroll, 150);
 }
 
 function renderMsg(role, text) {
@@ -2306,6 +2297,7 @@ function renderMsg(role, text) {
   div.innerHTML = `<div class="who">${who}</div><div class="body"></div>`;
   div.querySelector('.body').textContent = text;
   chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
   scrollChatToBottom();
 }
 
@@ -2315,6 +2307,7 @@ function showTypingIndicator() {
   div.id = 'typingIndicator';
   div.innerHTML = `<div class="who">the gate</div><div class="body"><span class="typing-dots"><span></span><span></span><span></span></span></div>`;
   chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
   scrollChatToBottom();
 }
 function hideTypingIndicator() {
@@ -2351,7 +2344,6 @@ function renderTally(n) {
 let lockInterval = null;
 
 function activeWindowEnd() {
-  checkDayRollover();
   if (day.opens.length === 0) return null;
   const last = day.opens[day.opens.length - 1];
   const endsAt = last + 10 * 60 * 1000;
@@ -2460,12 +2452,10 @@ function refreshTaskUI() {
 }
 
 function renderHistory() {
-  chatEl.innerHTML = '<div class="msg system"><div class="who">system</div><div class="body">This channel resets at midnight. Everything below is today\'s record.</div></div>';
   day.messages.forEach(m => { if (!m.hidden) renderMsg(m.role, m.text); });
   refreshStats();
   checkLock();
   refreshTaskUI();
-  scrollChatToBottom();
 }
 renderHistory();
 
@@ -2487,15 +2477,15 @@ function systemPrompt() {
     return `opened ${fmt(t)}, 10-min window ended ${fmt(endsAt)}${active ? ' (still technically inside this window right now)' : ''}`;
   });
   const openTimes = openDetails.join('; ') || 'none yet';
-  return `You are "The Gate" — a short-form-video access gatekeeper that a user (Kevis) built for himself. Call him Kevis, never Kevin — Kevin is a name he doesn't use with you, purely for privacy, so always use Kevis. He has a phone Screen Time setup that ONLY lets him open his scrolling apps by scanning a QR code, and this chat is the sole way to obtain that QR code. He is talking to you on purpose because he wants a LIGHT layer of friction, not a hard wall — if this gets too hard to convince, he'll just switch off the whole Screen Time restriction, which defeats the entire point. So the bar for granting access must stay low.
+  return `You are "The Gate" — a short-form-video access gatekeeper that a user (Kevis) built for himself. Always call him Kevis. He has a phone Screen Time setup that ONLY lets him open his scrolling apps by scanning a QR code, and this chat is the sole way to obtain that QR code. He is talking to you on purpose because he wants a LIGHT layer of friction, not a hard wall — if this gets too hard to convince, he'll just switch off the whole Screen Time restriction, which defeats the entire point. So the bar for granting access must stay low.
 
-CURRENT TIME: ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} (Brisbane, Australia). Use this naturally where it helps.
+CURRENT TIME: ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} local time. Use this naturally where it helps.
 
 CURRENT THEME: ${activeTheme.displayName} (${settings.themeMode === 'manual' ? 'manual' : settings.themeMode}).${holidayBias ? ` ${holidayBias}` : ''}
 
 IMPORTANT: every grant is automatically exactly 10 minutes, enforced by the app itself the moment the QR is scanned — this is fixed and NOT something Kevis chooses, negotiates, or reports to you. Never ask him how long he plans to scroll for, whether 10 minutes is enough, or anything about scroll duration — it's already decided and out of both your hands.
 
-CONTEXT FOR TODAY (${getLocalDateKey()}):
+CONTEXT FOR TODAY (${new Date().toISOString().slice(0,10)}):
 - Openings today, with each 10-minute window and whether it's still active: ${openTimes}
 - Total openings today: ${day.opens.length}
 - Summaries of each past opening today (not full transcripts — you're not being re-shown the raw conversations, just what happened): ${day.openingSummaries && day.openingSummaries.length ? day.openingSummaries.map((s, i) => `\n  ${i + 1}. ${s || '(summary pending)'}`).join('') : ' none yet'}
@@ -2563,6 +2553,9 @@ function currentOpeningMessages() {
 }
 
 async function callModel(extraSystemNote) {
+  if (!getApiKey()) {
+    throw new Error("No OpenRouter API key set — open Settings (gear icon) and paste one in.");
+  }
   const messages = [{ role: "system", content: systemPrompt() }];
   if (extraSystemNote) messages.push({ role: "system", content: extraSystemNote });
   // Only the CURRENT opening's raw messages go here — past openings are represented as compact
@@ -2571,7 +2564,7 @@ async function callModel(extraSystemNote) {
   logDebug('Gate call → messages sent', messages);
   const res = await fetch(ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
     body: JSON.stringify({ model: MODEL_TEXT, messages, max_tokens: 450, temperature: 0.8, reasoning: { enabled: false } })
   });
   if (!res.ok) {
@@ -2606,7 +2599,7 @@ async function summarizeOpening(transcript) {
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
       body: JSON.stringify({ model: MODEL_TEXT, messages: [{ role: "system", content: sys }, { role: "user", content: transcript || "(no messages)" }], max_tokens: 250, temperature: 0.3, reasoning: { enabled: false } })
     });
     if (!res.ok) { logDebug('Summarizer → failed', 'http ' + res.status); return '(summary unavailable)'; }
@@ -2632,7 +2625,7 @@ async function callChecker(transcriptText) {
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
       body: JSON.stringify({ model: MODEL_TEXT, messages: [{ role: "system", content: sys }, { role: "user", content: transcriptText || "(no messages)" }], max_tokens: 300, temperature: 0.3, reasoning: { enabled: false } })
     });
     logDebug('Checker → transcript', transcriptText);
@@ -2760,7 +2753,7 @@ async function generateDoomscrollFacts() {
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
       body: JSON.stringify({ model: MODEL_TEXT, messages: [{ role: "system", content: sys }, { role: "user", content: "Generate the 3 facts now." }], max_tokens: 350, temperature: 0.7, reasoning: { enabled: false } })
     });
     logDebug('Fact Generator', 'requested 3 facts');
@@ -2930,7 +2923,7 @@ async function verifyTaskPhoto(rawDataUrl) {
     }
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
       body: JSON.stringify({ model: MODEL_IMAGE, messages: [{ role: "user", content }], max_tokens: 150 })
     });
     if (!res.ok) throw new Error('verifier http ' + res.status);
@@ -3025,7 +3018,7 @@ async function verifyTaskVideo(file) {
     statusEl.textContent = 'Checking video...';
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
       body: JSON.stringify({
         model: MODEL_VIDEO,
         messages: [{
@@ -3081,7 +3074,7 @@ async function adjustGoal() {
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + getApiKey() },
       body: JSON.stringify({ model: MODEL_TEXT, messages: [{ role: "system", content: sys }, { role: "user", content: text }], max_tokens: 350, temperature: 0.6, reasoning: { enabled: false } })
     });
     if (!res.ok) throw new Error('adjust http ' + res.status);
@@ -3101,7 +3094,6 @@ async function adjustGoal() {
 }
 
 async function send() {
-  checkDayRollover();
   if (activeWindowEnd() && day.opens.length < DAILY_CAP) return;
   if (day.taskState && day.taskState.active) return;
   const text = inputEl.value.trim();
@@ -3315,6 +3307,34 @@ document.addEventListener('keydown', e => {
 document.getElementById('debugToggle').addEventListener('change', e => {
   settings.debugMode = e.target.checked; saveSettings(); ThemeManager.refresh('debug');
 });
+{
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const apiKeyStatus = document.getElementById('apiKeyStatus');
+  const apiKeyToggleBtn = document.getElementById('apiKeyToggleBtn');
+  function refreshApiKeyStatus() {
+    apiKeyStatus.textContent = getApiKey() ? 'Key saved in this browser.' : 'No key set yet — the gate can\'t talk to OpenRouter without one.';
+    apiKeyStatus.style.color = getApiKey() ? 'var(--bone-dim)' : 'var(--red)';
+  }
+  apiKeyInput.value = settings.apiKey || '';
+  refreshApiKeyStatus();
+  apiKeyInput.addEventListener('input', e => {
+    settings.apiKey = e.target.value.trim();
+    saveSettings();
+    refreshApiKeyStatus();
+  });
+  apiKeyToggleBtn.addEventListener('click', () => {
+    const showing = apiKeyInput.type === 'text';
+    apiKeyInput.type = showing ? 'password' : 'text';
+    apiKeyToggleBtn.textContent = showing ? 'Show' : 'Hide';
+  });
+  // Re-sync the field's displayed value every time Settings is actually opened, not just once
+  // on page load, in case settings were ever changed from outside this input (rare, but cheap
+  // to keep honest rather than assuming the field is always the source of truth).
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    apiKeyInput.value = settings.apiKey || '';
+    refreshApiKeyStatus();
+  });
+}
 document.querySelectorAll('.swatch').forEach(sw => {
   sw.addEventListener('click', () => {
     ThemeManager.setAccent(sw.dataset.accent);
@@ -3322,18 +3342,6 @@ document.querySelectorAll('.swatch').forEach(sw => {
 });
 document.getElementById('reduceMotionToggle').addEventListener('change', e => {
   ThemeManager.setReduceMotion(e.target.checked);
-});
-
-// Periodic and lifecycle triggers to ensure instant day-rollover detection
-setInterval(checkDayRollover, 1000);
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) checkDayRollover();
-});
-window.addEventListener('focus', () => {
-  checkDayRollover();
-});
-window.addEventListener('pageshow', () => {
-  checkDayRollover();
 });
 </script>
 </body>
