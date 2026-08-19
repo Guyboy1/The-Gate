@@ -61,7 +61,7 @@
   .tally svg{height:16px;width:auto;}
   .tally line{stroke:var(--red);stroke-width:2;}
 
-  .chat{border:1px solid var(--line);background:var(--ink-2);min-height:340px;max-height:440px;overflow-y:auto;padding:16px;margin-bottom:12px;border-radius:4px;box-shadow:inset 0 1px 8px rgba(0,0,0,0.2);scroll-behavior:smooth;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+  .chat{border:1px solid var(--line);background:var(--ink-2);min-height:340px;max-height:440px;overflow-y:auto;padding:16px;margin-bottom:12px;border-radius:4px;box-shadow:inset 0 1px 8px rgba(0,0,0,0.2);-webkit-overflow-scrolling:touch;touch-action:pan-y;}
   .chat-block{border:1px solid var(--line);background:var(--ink-2);border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.25);margin-bottom:12px;overflow:hidden;transition:box-shadow 0.25s;}
   .chat-block:focus-within{box-shadow:0 4px 20px rgba(0,0,0,0.32);}
   .chat-block .chat{border:none;border-radius:0;box-shadow:none;margin-bottom:0;}
@@ -455,7 +455,7 @@
   .theme-browser-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px;}
 
   /* ---- mobile adaptation ---- */
-  body.mobile-view{padding:14px 12px calc(78px + env(safe-area-inset-bottom));}
+  body.mobile-view{padding:14px 12px calc(24px + env(safe-area-inset-bottom));}
   body.mobile-view .frame{max-width:100%;}
   body.mobile-view .header{padding-bottom:10px;margin-bottom:12px;}
   body.mobile-view h1{font-size:27px;margin:0 0 4px;}
@@ -465,20 +465,17 @@
   body.mobile-view .stat{min-width:0;flex:1 1 0;padding:7px 8px;}
   body.mobile-view .stat-label{font-size:8.5px;}
   body.mobile-view .stat-val{font-size:15px;}
-  /* chat-block fills remaining viewport height so the gray box always reaches the composer, no gap.
-     IMPORTANT: this must be a HARD cap (height, not just min-height) or the flex:1 child below has
-     no bounded space to fill — the box then grows with message content instead of scrolling
-     internally, and the whole PAGE scrolls instead of the chat. See bug log #26. */
-  body.mobile-view .chat-block{display:flex;flex-direction:column;margin-bottom:10px;height:max(180px, calc(100dvh - 360px));max-height:max(180px, calc(100dvh - 360px));overflow:hidden;}
-  body.mobile-view .chat-block .chat{flex:1;min-height:0;max-height:none;padding:12px;margin-bottom:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+  /* chat-block flexes to provide ample space without overflowing the screen. Composer stays in-flow
+     at the bottom of chat-block rather than fixed, preventing it from overlaying/obscuring chat messages. */
+  body.mobile-view .chat-block{display:flex;flex-direction:column;margin-bottom:10px;height:clamp(280px, calc(100dvh - 220px - env(safe-area-inset-bottom)), 540px);max-height:none;overflow:hidden;}
+  body.mobile-view .chat-block .chat{flex:1 1 auto;min-height:0;max-height:none;padding:12px;margin-bottom:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;}
   body.mobile-view .msg{font-size:12.5px;margin-bottom:11px;}
   body.mobile-view textarea{font-size:16px;height:36px;line-height:20px;padding:8px 10px;} /* 16px prevents iOS auto-zoom on focus */
   body.mobile-view textarea::placeholder{font-size:13px;} /* placeholder can be smaller without triggering iOS zoom */
   body.mobile-view .composer{
-    position:fixed;left:0;right:0;bottom:0;z-index:40;
-    background:var(--ink);border-top:1px solid var(--line);
-    padding:10px 12px calc(10px + env(safe-area-inset-bottom));
-    margin:0;gap:8px;align-items:center;
+    position:relative;left:auto;right:auto;bottom:auto;z-index:auto;
+    background:var(--ink-2);border-top:1px solid var(--line);
+    padding:10px 12px;margin:0;gap:8px;align-items:center;display:flex;
   }
   body.mobile-view .composer button{height:38px;font-size:11px;padding:0 14px;}
   body.mobile-view .task-adjust button{font-size:11px;padding:0 14px;height:38px;}
@@ -1096,7 +1093,14 @@ function parseTaskBlock(raw) {
   return { description: raw.trim(), mode: 'single' }; // default if the model forgot the tag
 }
 
-const todayKey = () => "gate_log_" + new Date().toISOString().slice(0,10);
+function getLocalDateKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+const todayKey = () => "gate_log_" + getLocalDateKey();
 
 function loadDay() {
   const raw = localStorage.getItem(todayKey());
@@ -1746,7 +1750,7 @@ const ThemeManager = {
   getSunTimesFor(now = new Date()) {
     const pref = settings.themePreferences || {};
     const cache = pref.sunTimes;
-    if (cache && cache.date === now.toISOString().slice(0, 10) && cache.sunrise && cache.sunset) {
+    if (cache && cache.date === getLocalDateKey(now) && cache.sunrise && cache.sunset) {
       return { sunrise: new Date(cache.sunrise), sunset: new Date(cache.sunset) };
     }
     return null;
@@ -1772,7 +1776,7 @@ const ThemeManager = {
     const pref = settings.themePreferences || {};
     const loc = pref.location;
     if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return null;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateKey();
     const cacheKey = `${today}@${loc.lat.toFixed(3)},${loc.lng.toFixed(3)}`;
     if (pref.sunTimes && pref.sunTimes.cacheKey === cacheKey) return pref.sunTimes;
     try {
@@ -2271,23 +2275,44 @@ function logDebug(label, payload) {
   panel.scrollTop = panel.scrollHeight;
 }
 
+let currentDayDateKey = getLocalDateKey();
 let day = loadDay();
 if (!day.taskState) day.taskState = null;
 const chatEl = document.getElementById('chat');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('send');
 
-// Scrolls the chat box to the newest message. Double-rAF (not a single one) because on some
-// mobile browsers the freshly appended node hasn't been given its final layout height by the
-// time a single animation frame fires (webfont/text reflow, safe-area insets settling, etc.),
-// which under-scrolls by roughly one message. Two frames costs one extra ~16ms tick and reliably
-// lands after layout is settled.
+// Checks if the calendar date has rolled over and immediately resets/reloads today's state
+function checkDayRollover() {
+  const newDateKey = getLocalDateKey();
+  if (newDateKey !== currentDayDateKey) {
+    logDebug('Day rollover detected', `Switching from ${currentDayDateKey} to ${newDateKey}`);
+    currentDayDateKey = newDateKey;
+    day = loadDay();
+    if (!day.taskState) day.taskState = null;
+    renderHistory();
+    if (typeof ThemeManager !== 'undefined' && ThemeManager.refresh) {
+      ThemeManager.refresh('day-rollover');
+    }
+    return true;
+  }
+  return false;
+}
+
+// Scrolls the chat box to the newest message instantly without smooth-glide interruption.
+// Multiple staggered ticks (immediate, double-rAF, and timeouts) ensure full scroll even as
+// webfonts/text reflow settles on mobile.
 function scrollChatToBottom() {
+  const doScroll = () => {
+    if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
+  };
+  doScroll();
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      chatEl.scrollTop = chatEl.scrollHeight;
-    });
+    doScroll();
+    requestAnimationFrame(doScroll);
   });
+  setTimeout(doScroll, 50);
+  setTimeout(doScroll, 150);
 }
 
 function renderMsg(role, text) {
@@ -2297,7 +2322,6 @@ function renderMsg(role, text) {
   div.innerHTML = `<div class="who">${who}</div><div class="body"></div>`;
   div.querySelector('.body').textContent = text;
   chatEl.appendChild(div);
-  chatEl.scrollTop = chatEl.scrollHeight;
   scrollChatToBottom();
 }
 
@@ -2307,7 +2331,6 @@ function showTypingIndicator() {
   div.id = 'typingIndicator';
   div.innerHTML = `<div class="who">the gate</div><div class="body"><span class="typing-dots"><span></span><span></span><span></span></span></div>`;
   chatEl.appendChild(div);
-  chatEl.scrollTop = chatEl.scrollHeight;
   scrollChatToBottom();
 }
 function hideTypingIndicator() {
@@ -2344,6 +2367,7 @@ function renderTally(n) {
 let lockInterval = null;
 
 function activeWindowEnd() {
+  checkDayRollover();
   if (day.opens.length === 0) return null;
   const last = day.opens[day.opens.length - 1];
   const endsAt = last + 10 * 60 * 1000;
@@ -2452,10 +2476,12 @@ function refreshTaskUI() {
 }
 
 function renderHistory() {
+  chatEl.innerHTML = '<div class="msg system"><div class="who">system</div><div class="body">This channel resets at midnight. Everything below is today\'s record.</div></div>';
   day.messages.forEach(m => { if (!m.hidden) renderMsg(m.role, m.text); });
   refreshStats();
   checkLock();
   refreshTaskUI();
+  scrollChatToBottom();
 }
 renderHistory();
 
@@ -2485,7 +2511,7 @@ CURRENT THEME: ${activeTheme.displayName} (${settings.themeMode === 'manual' ? '
 
 IMPORTANT: every grant is automatically exactly 10 minutes, enforced by the app itself the moment the QR is scanned — this is fixed and NOT something Kevis chooses, negotiates, or reports to you. Never ask him how long he plans to scroll for, whether 10 minutes is enough, or anything about scroll duration — it's already decided and out of both your hands.
 
-CONTEXT FOR TODAY (${new Date().toISOString().slice(0,10)}):
+CONTEXT FOR TODAY (${getLocalDateKey()}):
 - Openings today, with each 10-minute window and whether it's still active: ${openTimes}
 - Total openings today: ${day.opens.length}
 - Summaries of each past opening today (not full transcripts — you're not being re-shown the raw conversations, just what happened): ${day.openingSummaries && day.openingSummaries.length ? day.openingSummaries.map((s, i) => `\n  ${i + 1}. ${s || '(summary pending)'}`).join('') : ' none yet'}
@@ -3094,6 +3120,7 @@ async function adjustGoal() {
 }
 
 async function send() {
+  checkDayRollover();
   if (activeWindowEnd() && day.opens.length < DAILY_CAP) return;
   if (day.taskState && day.taskState.active) return;
   const text = inputEl.value.trim();
@@ -3342,6 +3369,18 @@ document.querySelectorAll('.swatch').forEach(sw => {
 });
 document.getElementById('reduceMotionToggle').addEventListener('change', e => {
   ThemeManager.setReduceMotion(e.target.checked);
+});
+
+// Periodic and lifecycle triggers to ensure instant day-rollover detection
+setInterval(checkDayRollover, 1000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) checkDayRollover();
+});
+window.addEventListener('focus', () => {
+  checkDayRollover();
+});
+window.addEventListener('pageshow', () => {
+  checkDayRollover();
 });
 </script>
 </body>
