@@ -1,12 +1,12 @@
 # The Gate
 
-AI Warning: AI was used in the creation of this. This does not mean the entire project is AI. All the planning and features where described by me, and either roughly coded or coded in pseudocode before submitted into AI to improve. 
-
 An additional layer of protection for iPhone Screen Time. Instead of simply entering a passcode, you must first explain your reasons in a chat before you can unlock your short-form video apps. And as the day progresses, the process becomes increasingly challenging.
 
 **This works exclusively on the iPhone** and only in conjunction with the free app [Foqos](https://www.foqos.app) (open source: [github.com/awaseem/foqos](https://github.com/awaseem/foqos)), which handles the actual blocking and unblocking via Screen Time. The Gate does not access Screen Time directly—it is the conversation you must have before Foqos lets you back in.
 
 Everything runs entirely within your own browser. There is no server, no user account, and no data leaves your iPhone—with the exception of the messages you send to your chosen AI model (via your own [OpenRouter](https://openrouter.ai) API key, which also never leaves your browser).
+
+AI Warning: AI was used in the creation of this. This does not mean the entire project is AI. All the planning and features where described by me, and either roughly coded or coded in pseudocode before submitted into AI to improve. 
 
 ---
 
