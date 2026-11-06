@@ -1,6 +1,6 @@
 # The Gate
 
-AI Warning: AI was used in the creation of this. This does not mean the entire project is AI. All the planning and features where described by me, and either roughly coded or coded in pseudocode before submitted into AI to improve. All models where not sketched by me though I suck at art lol.
+AI Warning: AI was used in the creation of this. This does not mean the entire project is AI. All the planning and features where described by me, and either roughly coded or coded in pseudocode before submitted into AI to improve. 
 
 An additional layer of protection for iPhone Screen Time. Instead of simply entering a passcode, you must first explain your reasons in a chat before you can unlock your short-form video apps. And as the day progresses, the process becomes increasingly challenging.
 
